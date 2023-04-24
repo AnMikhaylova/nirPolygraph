@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[2]:
+# In[1]:
 
 
 import pandas as pd
@@ -14,7 +14,7 @@ from icecream import ic
 # ## Задание путей и имени исследуемого 
 # 
 
-# In[3]:
+# In[2]:
 
 
 dataDir = 'D:\\dataPoly\\'
@@ -27,7 +27,7 @@ subject = r'Базаев Кирилл'
 
 # ## Импорт файла timeline
 
-# In[4]:
+# In[3]:
 
 
 custom_date_parser = lambda x: datetime.datetime.strptime(x, "%M:%S:%f") #парсер для времени
@@ -35,7 +35,7 @@ timeline = pd.read_excel(timeData + 'timeline.xlsx', parse_dates = list(range(2,
 timeline.info()
 
 
-# In[5]:
+# In[4]:
 
 
 timeline.head()
@@ -43,20 +43,27 @@ timeline.head()
 
 # ## Импорт данных полиграфа
 
-# In[6]:
+# In[47]:
 
 
-pathP1 = polyData + subject + '\\' + 'Фигуры_BLOOD_VOLUME.txt' #путь к файлу
+polyDict = {}
 readColsP = ['Time', 'Value']
-bd_vl = pd.read_table(pathP1 ,sep='\s+', usecols = readColsP)
-bd_vl['Time'] = bd_vl['Time'].apply(lambda x: datetime.datetime.utcfromtimestamp(x//1000).replace(microsecond=x%1000*1000))
-bd_vl.info()
+
+for p in polyChannels:
+    pathP1 = polyData + subject + '\\' + 'Фигуры_' + p + '.txt' #путь к файлу
+    df = pd.read_table(pathP1 ,sep='\s+', usecols = readColsP)
+    df['Value'] = df['Value'].replace(',', '.', regex = True).astype(float)
+    df['Time'] = df['Time'].apply(lambda x: datetime.datetime.utcfromtimestamp(x//1000).replace(microsecond=x%1000*1000))
+    polyDict[p] = df
+
+for p in polyChannels:
+    print(polyDict[p])
 
 
-# In[7]:
+# In[54]:
 
 
-bd_vl['Time'].dt.time
+#bd_vl['Time'].dt.time
 
 
 # In[8]:
@@ -68,7 +75,7 @@ bd_vl['Time'].dt.time
 
 # ## Импорт FaceReader
 
-# In[8]:
+# In[37]:
 
 
 #cols = ['Neutral', 'Happy', 'Sad', 'Angry', 'Surprised', 'Scared',
@@ -90,13 +97,13 @@ emotions[colsF] = emotions[colsF].apply(pd.to_numeric,errors='coerce').fillna(em
 #    emotions.iloc[:,i] = pd.to_numeric(emotions.iloc[:,i], errors='coerce').fillna(0, downcast='infer')
 
 
-# In[9]:
+# In[38]:
 
 
 emotions.info()
 
 
-# In[10]:
+# In[39]:
 
 
 emotions.iloc[:10] #проверка значений NaN
@@ -104,38 +111,19 @@ emotions.iloc[:10] #проверка значений NaN
 
 # ## Формирование итогового выходного массива
 
-# In[12]:
-
-
-#end_time = 0 #в миллисекундах
-#if (bd_vl['Time'].iloc[-1].time() > emotions['Video Time'].iloc[-1].time()):
-#    end_time = bd_vl['Time'][len(bd_vl)-1].timestamp() * 1000
-#else:
-#    end_time = emotions['Video Time'][len(emotions)-1].timestamp() * 1000
-
-#print (end_time)
-#
-#i = 0 #start_time
-#while i < int(end_time):
-#    i += 50
-#    print (i)
-
-
 # #### Скелет итогового датафрейма
 
-# In[11]:
+# In[40]:
 
 
-for j, row in timeline.iterrows():
-    if (row['name'] == subject):
-        subID = row['id']
+subID = timeline[timeline['name'] == subject]['id'][0]
 test = pd.DataFrame(columns= ['id', 'name', 'time', 'stimul', 'trial'] + list(emotions.columns)[1:] + polyChannels)
 test
 
 
 # #### Функция для конвертации объекта datetime.time в миллисекунды
 
-# In[12]:
+# In[41]:
 
 
 def totalMiliSec(time):
@@ -144,14 +132,14 @@ def totalMiliSec(time):
 
 # #### Функция для фильтрации нулевых стимулов
 
-# In[13]:
+# In[42]:
 
 
 def filter_stim(s): 
     return not re.search(r'C0_\d', s)
 
 
-# In[14]:
+# In[43]:
 
 
 stimulRead = filter(filter_stim, list(timeline.columns[2:])) #фильтруем список стимулов из датафрейма, чтоб убрать нулевые
@@ -162,11 +150,15 @@ for s in stimulRead:
 
 # #### Функция для усреднения строк файлов полиграфа
 
-# In[15]:
+# In[53]:
 
 
 def sortPoly(df, t):
-    rows = df[(t <= df['Time']) & (df['Time'] < t + 50)]
+    df1 = df.copy(deep=True)
+    df1['Time'] = df1['Time'].map(lambda x: (x.microsecond + x.second * 1000000 + x.minute * 60 * 1000000 +
+                                         x.hour * 60 * 60 * 1000000) / 1000)
+    rows = df1[(t <= df1['Time']) & (df1['Time'] < t + 50)]
+    #print(rows['Value'])
     if len(rows) > 1:
         tot = rows['Value'].mean()
     elif len(rows) != 0:
@@ -178,23 +170,17 @@ def sortPoly(df, t):
 
 # #### Формирование итогового датафрейма
 
-# In[16]:
+# In[51]:
 
 
 #конечное время
 end_time = 0 #в миллисекундах, самая ппоследняя временная метка из двух файлов
-if (bd_vl['Time'].iloc[-1].time() > emotions['Video Time'].iloc[-1].time()):
-    end_time = totalMiliSec(bd_vl['Time'].iloc[-1].time())
+if (polyDict['EDA']['Time'].iloc[-1].time() > emotions['Video Time'].iloc[-1].time()):
+    end_time = totalMiliSec(polyDict['EDA']['Time'].iloc[-1].time())
 else:
     end_time = totalMiliSec(emotions['Video Time'].iloc[-1].time())
 
 print (end_time)
-
-
-
-df1 = bd_vl.copy(deep=True)
-df1['Time'] = df1['Time'].map(lambda x: (x.microsecond + x.second * 1000000 + x.minute * 60 * 1000000 +
-                                         x.hour * 60 * 60 * 1000000) / 1000)
 
 df2 = emotions.copy(deep=True)
 df2['Video Time'] = df2['Video Time'].map(
@@ -202,7 +188,7 @@ df2['Video Time'] = df2['Video Time'].map(
                x.hour * 60 * 60 * 1000000) / 1000)
 
 
-# In[17]:
+# In[54]:
 
 
 # очистка итогового датафрейма
@@ -210,9 +196,12 @@ ic()  # start
 test.drop(test.index, inplace=True)
 
 time = 0  # начальное время
-
+pTotal = {}
 while time < int(end_time):
-    pTotal = sortPoly(df1, time)
+ 
+    for k in polyDict:
+        tot = sortPoly(polyDict[k], time)
+        pTotal[k] = tot
     # ic(pTotal)
 
     eRows = df2[(time <= df2['Video Time']) & (df2['Video Time'] < time + 50)]
@@ -241,10 +230,11 @@ while time < int(end_time):
     test.loc[len(test.index)] = [subID, subject, time, 0, 0, eTotal['Neutral'][0], eTotal['Happy'][0],
                                  eTotal['Sad'][0], eTotal['Angry'][0], eTotal['Surprised'][0],
                                  eTotal['Scared'][0], eTotal['Disgusted'][0], eTotal['Contempt'][0],
-                                 eTotal['Valence'][0], eTotal['Arousal'][0], 0, 0, pTotal, 0, 0, 0, 0, 0, 0]
+                                 eTotal['Valence'][0], eTotal['Arousal'][0], pTotal['ABDOMINAL_RESP'], pTotal['ABS_BLOOD_VOLUME'], pTotal['BLOOD_VOLUME'], pTotal['EDA'], pTotal['HEART_RATE'], pTotal['PLE'], pTotal['THORACIC_RESP'], pTotal['TONIC_EDA'], pTotal['TREMOR']]
 
     # pRows.drop(pRows.index, inplace=True)  # очищаем промежуточные датафреймы
     eRows.drop(eRows.index, inplace=True)
+    pTotal.clear()
 
 ic()  # stop
 test.to_csv(dataDir + 'file.csv', encoding='utf-8')
