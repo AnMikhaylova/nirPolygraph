@@ -1,12 +1,14 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[1]:
+# In[47]:
 
 
 import pandas as pd
 import numpy as np
 import datetime 
+import openpyxl
+import argparse
 import re 
 from icecream import ic 
 
@@ -14,38 +16,38 @@ from icecream import ic
 # ## Задание путей и имени исследуемого 
 # 
 
-# In[2]:
+# In[48]:
 
+print('script')
 
-dataDir = 'D:\\dataPoly\\'
+parser = argparse.ArgumentParser(description='A tutorial of argparse!')
+#parser.add_argument("--dir", default='D:\\dataPoly', type=str, required=True, help="This is the path to the root data folder")
+parser.add_argument("--dir", type=str, required=True, help="This is the path to the root data folder")
+#parser.add_argument("--sub", default=r'Базаев Кирилл', type=str, required=True, help="This is the subject's name")
+parser.add_argument("--sub", type=str, required=True, help="This is the subject's name")
+args = parser.parse_args()
+
+#dataDir = 'D:\\dataPoly\\'
+dataDir = args.dir + "\\"
 faceData = dataDir + 'facereader\\'
 polyData = dataDir + 'polygraph\\'
 timeData = dataDir + 'time\\'
 polyChannels = ["ABDOMINAL_RESP", "ABS_BLOOD_VOLUME", "BLOOD_VOLUME", "EDA", "HEART_RATE", "PLE", "THORACIC_RESP", "TONIC_EDA", "TREMOR"]
-subject = r'Базаев Кирилл'
-
+#subject = r'Базаев Кирилл'
+subject = args.sub
 
 # ## Импорт файла timeline
 
-# In[3]:
-
-
-custom_date_parser = lambda x: datetime.datetime.strptime(x, "%M:%S:%f") #парсер для времени
-timeline = pd.read_excel(timeData + 'timeline.xlsx', parse_dates = list(range(2,20)), date_parser = custom_date_parser) #парсим время в колонках 2-19
-timeline.info()
-
-
 # In[4]:
-
-
-timeline.head()
+#custom_date_parser = lambda x: datetime.datetime.strptime(x, "%M:%S:%f") #парсер для времени
+#timeline = pd.read_excel(timeData + 'timeline.xlsx', parse_dates = list(range(2,20)), date_parser = custom_date_parser) #парсим время в колонках 2-19
+timeline = pd.read_excel(timeData + 'timeline.xlsx') #парсим время в колонках 2-19
+timeline.iloc[:, 2:20] = timeline.iloc[:, 2:20].apply(lambda x: pd.to_datetime(x, format="%M:%S:%f", errors='coerce'))
 
 
 # ## Импорт данных полиграфа
 
-# In[47]:
-
-
+# In[6]:
 polyDict = {}
 readColsP = ['Time', 'Value']
 
@@ -56,74 +58,29 @@ for p in polyChannels:
     df['Time'] = df['Time'].apply(lambda x: datetime.datetime.utcfromtimestamp(x//1000).replace(microsecond=x%1000*1000))
     polyDict[p] = df
 
-for p in polyChannels:
-    print(polyDict[p])
-
-
-# In[54]:
-
-
-#bd_vl['Time'].dt.time
-
-
-# In[8]:
-
-
-#emotions['Video Time'] = pd.to_datetime(emotions['Video Time'])
-#pd.to_datetime(emotions['Video Time']).dt.time
-
 
 # ## Импорт FaceReader
 
-# In[37]:
-
-
-#cols = ['Neutral', 'Happy', 'Sad', 'Angry', 'Surprised', 'Scared',
-#       'Disgusted', 'Contempt', 'Valence', 'Arousal', 'Y - Head Orientation', 
-#        'X - Head Orientation','Z - Head Orientation', 'Quality']
+# In[8]:
 
 readColsF = ['Video Time', 'Neutral', 'Happy', 'Sad', 'Angry', 'Surprised', 'Scared', 'Disgusted', 'Contempt', 'Valence', 'Arousal'] 
 colsF = ['Neutral', 'Happy', 'Sad', 'Angry', 'Surprised', 'Scared', 'Disgusted', 'Contempt', 'Valence', 'Arousal'] 
-#conv = dict.fromkeys(cols, lambda x: pd.to_numeric(x, errors='coerce'))
 na = ["FIND_FAILED", "FIT_FAILED"] #значения NA
 pathF1 = faceData + subject + '.txt'
-
-emotions = pd.read_table(pathF1, sep='\t', skiprows=8, index_col=False, parse_dates = ['Video Time'], na_values = na, usecols = readColsF)
-#converters= conv
-
-emotions[colsF] = emotions[colsF].apply(pd.to_numeric,errors='coerce').fillna(emotions)
-
-#for i in range(26, 68):
-#    emotions.iloc[:,i] = pd.to_numeric(emotions.iloc[:,i], errors='coerce').fillna(0, downcast='infer')
-
-
-# In[38]:
-
-
-emotions.info()
-
-
-# In[39]:
-
-
-emotions.iloc[:10] #проверка значений NaN
-
-
+#emotions = pd.read_table(pathF1, sep='\t', skiprows=8, index_col=False, parse_dates = ['Video Time'], na_values = na, usecols = readColsF)
+emotions = pd.read_table(pathF1, sep='\t', skiprows=8, index_col=False, na_values = na, usecols = readColsF)
+emotions[colsF] = emotions[colsF].apply(pd.to_numeric, errors='coerce').fillna(emotions)
+emotions['Video Time'] = pd.to_datetime(emotions['Video Time'], errors='coerce')
 # ## Формирование итогового выходного массива
 
 # #### Скелет итогового датафрейма
 
-# In[40]:
+# In[12]:
 
-
-subID = timeline[timeline['name'] == subject]['id'][0]
-test = pd.DataFrame(columns= ['id', 'name', 'time', 'stimul', 'trial'] + list(emotions.columns)[1:] + polyChannels)
-test
-
-
+test = pd.DataFrame(columns = ['id', 'name', 'time', 'stimul', 'trial'] + list(emotions.columns)[1:] + polyChannels)
 # #### Функция для конвертации объекта datetime.time в миллисекунды
 
-# In[41]:
+# In[13]:
 
 
 def totalMiliSec(time):
@@ -132,33 +89,54 @@ def totalMiliSec(time):
 
 # #### Функция для фильтрации нулевых стимулов
 
-# In[42]:
+# In[46]:
 
 
 def filter_stim(s): 
     return not re.search(r'C0_\d', s)
 
 
-# In[43]:
+# #### Функция для разметки стимулов
+
+# In[69]:
 
 
-stimulRead = filter(filter_stim, list(timeline.columns[2:])) #фильтруем список стимулов из датафрейма, чтоб убрать нулевые
+def stimPrep(df, sID): # df = timeline, sID - исследуемый
+    stimulRead = filter(filter_stim, list(df.columns[2:])) #фильтруем список стимулов из датафрейма, чтоб убрать нулевые
+                                                           #получаем список нужных стимулов
+    stimMilisec = {}
+    for s in stimulRead:
+        stimMilisec[s] = totalMiliSec(df.loc[df['id'] == sID][s][0].time())
+    return stimMilisec
 
-for s in stimulRead:
-    print(totalMiliSec(timeline.loc[timeline['id'] == subID][s][0].time())) #время предявления каждого (ненулевого) стимула в мс
+
+# In[67]:
+
+
+def stimAndTime(df, t): # df = timeline in milisec, sID - исследуемый
+    dic = {key: val for key, val in df.items() if ((val <= t) & (t <= val + 10000))}
+    return (list(dic.keys())[0].split('_') if dic else [np.nan, np.nan])
+    
+
+# #### Функция для копирования и конвертации фреймов полиграфа
+
+# In[49]:
+
+
+def copyAconvert(df):
+    df1 = df.copy(deep=True)
+    df1['Time'] = df1['Time'].map(lambda x: (x.microsecond + x.second * 1000000 + x.minute * 60 * 1000000 +
+                                         x.hour * 60 * 60 * 1000000) / 1000)
+    return df1
 
 
 # #### Функция для усреднения строк файлов полиграфа
 
-# In[53]:
+# In[50]:
 
 
 def sortPoly(df, t):
-    df1 = df.copy(deep=True)
-    df1['Time'] = df1['Time'].map(lambda x: (x.microsecond + x.second * 1000000 + x.minute * 60 * 1000000 +
-                                         x.hour * 60 * 60 * 1000000) / 1000)
-    rows = df1[(t <= df1['Time']) & (df1['Time'] < t + 50)]
-    #print(rows['Value'])
+    rows = df[(t <= df['Time']) & (df['Time'] < t + 50)]
     if len(rows) > 1:
         tot = rows['Value'].mean()
     elif len(rows) != 0:
@@ -168,10 +146,29 @@ def sortPoly(df, t):
     return tot
 
 
-# #### Формирование итогового датафрейма
+# #### Функция для усреднения строк файлов FaceReader
 
 # In[51]:
 
+
+def sortEmot(df, t):
+    
+    rows = df[(t <= df['Video Time']) & (df['Video Time'] < t + 50)]
+    if len(rows) > 1:
+        tot = rows.mean().to_frame().T
+    elif len(rows) != 0:
+        tot = rows.reset_index(drop=True)
+    else:
+        tot = pd.DataFrame(0, index=[0],
+                              columns=['Neutral', 'Happy', 'Sad', 'Angry', 'Surprised', 'Scared', 'Disgusted',
+                                       'Contempt', 'Valence', 'Arousal'])
+
+    return tot
+
+
+# #### Формирование итогового датафрейма
+
+# In[52]:
 
 #конечное время
 end_time = 0 #в миллисекундах, самая ппоследняя временная метка из двух файлов
@@ -180,64 +177,49 @@ if (polyDict['EDA']['Time'].iloc[-1].time() > emotions['Video Time'].iloc[-1].ti
 else:
     end_time = totalMiliSec(emotions['Video Time'].iloc[-1].time())
 
-print (end_time)
+subID = timeline[timeline['name'] == subject]['id'][0]
 
 df2 = emotions.copy(deep=True)
 df2['Video Time'] = df2['Video Time'].map(
     lambda x: (x.microsecond + x.second * 1000000 + x.minute * 60 * 1000000 +
                x.hour * 60 * 60 * 1000000) / 1000)
 
+polyDict2 = {}
+for k in polyDict:
+        polyDict2[k] = copyAconvert(polyDict[k])
 
-# In[54]:
+
+# In[72]:
 
 
 # очистка итогового датафрейма
-ic()  # start
 test.drop(test.index, inplace=True)
-
 time = 0  # начальное время
 pTotal = {}
+stimMilli = stimPrep(timeline, subID)
+ic()
 while time < int(end_time):
- 
-    for k in polyDict:
-        tot = sortPoly(polyDict[k], time)
-        pTotal[k] = tot
-    # ic(pTotal)
+    for k in polyDict2:
+        pTotal[k] = sortPoly(polyDict2[k], time)
 
-    eRows = df2[(time <= df2['Video Time']) & (df2['Video Time'] < time + 50)]
-
-    if len(eRows) > 1:
-        # ic('if1')
-        # ic()
-        # ic(eRows)
-        # eTotal = pd.DataFrame(np.nanmean(eRows))
-        eTotal = eRows.mean().to_frame().T
-        # ic(eTotal)
-    elif len(eRows) != 0:
-        # ic('if2')
-        # ic()
-        # ic(eRows)
-        eTotal = eRows.reset_index(drop=True)
-        # ic(eTotal)
-    else:
-        # ic('if3')
-        # ic()
-        eTotal = pd.DataFrame(0, index=[0],
-                              columns=['Neutral', 'Happy', 'Sad', 'Angry', 'Surprised', 'Scared', 'Disgusted',
-                                       'Contempt', 'Valence', 'Arousal'])
-
+    eTotal = sortEmot(df2, time)    
+    stim = stimAndTime(stimMilli, time)
     time += 50  # временной шаг (может регулироваться)
-    test.loc[len(test.index)] = [subID, subject, time, 0, 0, eTotal['Neutral'][0], eTotal['Happy'][0],
+    test.loc[len(test.index)] = [subID, subject, time, stim[0], stim[1], eTotal['Neutral'][0], eTotal['Happy'][0],
                                  eTotal['Sad'][0], eTotal['Angry'][0], eTotal['Surprised'][0],
                                  eTotal['Scared'][0], eTotal['Disgusted'][0], eTotal['Contempt'][0],
                                  eTotal['Valence'][0], eTotal['Arousal'][0], pTotal['ABDOMINAL_RESP'], pTotal['ABS_BLOOD_VOLUME'], pTotal['BLOOD_VOLUME'], pTotal['EDA'], pTotal['HEART_RATE'], pTotal['PLE'], pTotal['THORACIC_RESP'], pTotal['TONIC_EDA'], pTotal['TREMOR']]
 
-    # pRows.drop(pRows.index, inplace=True)  # очищаем промежуточные датафреймы
-    eRows.drop(eRows.index, inplace=True)
     pTotal.clear()
+    eTotal = eTotal.iloc[0:0]
 
-ic()  # stop
 test.to_csv(dataDir + 'file.csv', encoding='utf-8')
+ic()
+
+# In[ ]:
+
+
+
 
 
 # In[ ]:
