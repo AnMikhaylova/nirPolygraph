@@ -8,20 +8,45 @@ import argparse
 import re
 import os
 from icecream import ic
+from scipy.stats import zscore
+
+
+# для изменения каналов полиграфа надо изменить значение списка polyChannels
+def argParser():
+    parser = argparse.ArgumentParser(description='Script polygraph')
+    parser.add_argument("--dir", type=str, required=True, help="This is the path to the root data folder")
+    # parser.add_argument("--sub", type=str, required=True, help="This is the subject's name")
+    args = parser.parse_args()
+    dataDir = args.dir + "\\"
+    faceData = dataDir + 'facereader\\'
+    polyData = dataDir + 'polygraph\\'
+    timeData = dataDir + 'time\\'
+    polyChannels = ["ABDOMINAL_RESP", "ABS_BLOOD_VOLUME", "BLOOD_VOLUME", "EDA", "HEART_RATE", "PLE", "THORACIC_RESP",
+                    "TONIC_EDA", "TREMOR"]
+    # polyChannels = ["ABDOMINAL_RESP", "BLOOD_VOLUME", "EDA", "PLE", "THORACIC_RESP"]
+
+    file_names = os.listdir(faceData)
+    subjects = list(map(lambda x: x.replace('.txt', ''), file_names))  # имена всех участников (субъектов) эксперимента
+    metaInf = {'dataDir': dataDir, 'faceData': faceData, 'polyData': polyData, 'timeData': timeData,
+               'polyChannels': polyChannels, 'subjects': subjects}
+    return metaInf
 
 
 # #### Функция для конвертации объекта datetime.time в миллисекунды
 def totalMiliSec(time):
     return (
-            time.microsecond + time.second * 1000000 + time.minute * 60 * 1000000 + time.hour * 60 * 60 * 1000000) / 1000
+            time.microsecond + time.second * 1000000 + time.minute * 60 * 1000000 +
+            time.hour * 60 * 60 * 1000000) / 1000
 
 
-# #### Функция для фильтрации нулевых стимулов
+# #### Функция для фильтрации нулевых стимулов (применяется в функции filter())
 def filter_stim(s):
     return not re.search(r'C0_\d', s)
 
 
-# #### Функция для разметки стимулов
+# #### Функция для разметки стимулов (выделение из таблицы временной разметки для конкретного исследуемого)
+# Выходное значение: словарь с временной разметкой по стимулам для конкретного исследуемого,
+# время представлено в миллисекундах
 def stimPrep(df, sID):  # df = timeline, sID - исследуемый
     stimulRead = filter(filter_stim,
                         list(df.columns[2:]))  # фильтруем список стимулов из датафрейма, чтоб убрать нулевые
@@ -32,9 +57,24 @@ def stimPrep(df, sID):  # df = timeline, sID - исследуемый
     return stimMilisec
 
 
-def stimAndTime(df, t):  # df = timeline in milisec, t - time
-    dic = {key: val for key, val in df.items() if ((val <= t) & (t <= val + 10000))}
-    return (list(dic.keys())[0].split('_') if dic else [np.nan, np.nan])
+# #### Функция для сопоставления времени в файлах со временем предъявления стимулов
+def stimAndTime(timeline, t):  # timeline = timeline in milisec (dictionary), t - time
+    dic = {}
+    # dic = {key: val for key, val in df.items() if ((val <= t) & (t <= val + 10000))}
+    for i, (key, value) in enumerate(timeline.items()):
+        if i < len(timeline) - 1:
+            next_key, next_value = list(timeline.items())[i + 1]
+            if (value <= t) & (t < next_value):
+                dic[key] = value
+        else:
+            if value <= t:
+                dic[key] = value
+    if dic:
+        dic2 = list(dic.keys())[0].split('_')
+        dic2[1] = int(dic2[1])
+    else:
+        dic2 = [np.nan, np.nan]
+    return dic2
 
 
 # #### Функция для копирования и конвертации фреймов полиграфа
@@ -72,29 +112,10 @@ def sortEmot(df, t):
     return tot
 
 
-def argParser():
-    parser = argparse.ArgumentParser(description='Script polygraph')
-    parser.add_argument("--dir", type=str, required=True, help="This is the path to the root data folder")
-    # parser.add_argument("--sub", type=str, required=True, help="This is the subject's name")
-    args = parser.parse_args()
-    dataDir = args.dir + "\\"
-    faceData = dataDir + 'facereader\\'
-    polyData = dataDir + 'polygraph\\'
-    timeData = dataDir + 'time\\'
-    polyChannels = ["ABDOMINAL_RESP", "ABS_BLOOD_VOLUME", "BLOOD_VOLUME", "EDA", "HEART_RATE", "PLE", "THORACIC_RESP",
-                    "TONIC_EDA", "TREMOR"]
-
-    file_names = os.listdir(faceData)
-    subjects = list(map(lambda x: x.replace('.txt', ''), file_names))
-    metaInf = {'dataDir': dataDir, 'faceData': faceData, 'polyData': polyData, 'timeData': timeData,
-               'polyChannels': polyChannels, 'subjects': subjects}
-    return metaInf
-
-
 # ## Импорт файла timeline
 def readTimline(timeData):
-    timeline = pd.read_excel(timeData + 'timeline.xlsx')  # парсим время в колонках 2-19
-    timeline[timeline.columns[2:20]] = timeline[timeline.columns[2:20]].apply(
+    timeline = pd.read_excel(timeData + 'timeline.xlsx')
+    timeline[timeline.columns[2:20]] = timeline[timeline.columns[2:20]].apply(  # парсим время в колонках 2-19
         lambda x: pd.to_datetime(x, format="%M:%S:%f", errors='coerce'))
     return timeline
 
@@ -184,16 +205,30 @@ def finalDataFrame(metaInf, subject):
         pTotal.clear()
         eTotal = eTotal.iloc[0:0]
 
-    test.to_csv(dataDir + subject + '.csv', encoding='utf-8')
+    test.to_csv(dataDir + subject + '.csv', encoding='utf-8', index=False)
     ic()
     return test
+
+
+def normalizeFinalDF(polyFrame):
+    # удаляем строки, которые не относятся к предъявлениям
+    df = polyFrame[polyFrame['trial'].notnull()]
+    # массив по трем предъявлениям
+    # range(5, df.shape[1]) индексы колонок для нормализации
+    for trialNum in 1, 2, 3:
+        for col in range(5, df.shape[1]):
+            df.loc[df['trial'] == trialNum, df.columns[col]] = zscore(df.loc[df['trial'] == trialNum, df.columns[col]])
+    return df
 
 
 if __name__ == "__main__":
     metaInformation = argParser()
     subjects = metaInformation.get('subjects')
     # для конкретного объекта по его индексу
-    finalDataFrame(metaInformation, subjects[2])
+    frame2 = finalDataFrame(metaInformation, subjects[2])
+    frame2Norm = normalizeFinalDF(frame2)
+    # d = pd.read_csv('D:\\dataPoly\\Белоус Полина.csv')
+    # frameNorm = normalizeFinalDF(d)
 
     # для нескольких объектов по их индексам
     # for i in 0, 1:
