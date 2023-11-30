@@ -291,6 +291,15 @@ def metrics_EDA(df):
     name_subj = df.iloc[0]['name']
     for name, group in groups:
         win = window(EDA_WINDOW['start'], EDA_WINDOW['end'], group)
+        title = name_subj + " stimul:" + name[1] + " trial:" + str(name[0])
+        plt.title(title)
+        plt.xlabel("time, ms")
+        plt.ylabel("EDA")
+        # включаем основную сетку
+        plt.grid(which='major')
+        # включаем дополнительную сетку
+        plt.grid(which='minor', linestyle=':')
+        plt.tight_layout()
         plt.plot(win['time'], win['EDA'])
         plt.show()
         max_index = win['EDA'].idxmax()
@@ -311,6 +320,15 @@ def metrics_resp(dataframe):
     name_subj = dataframe.iloc[0]['name']
     for name, group in groups:
         df = window(BREATHE_WINDOW['start'], BREATHE_WINDOW['end'], group)
+        title = name_subj + " stimul:" + name[1] + " trial:" + str(name[0])
+        plt.title(title)
+        plt.xlabel("time, ms")
+        plt.ylabel("THORACIC_RESP")
+        # включаем основную сетку
+        plt.grid(which='major')
+        # включаем дополнительную сетку
+        plt.grid(which='minor', linestyle=':')
+        plt.tight_layout()
         plt.plot(df['time'], df['THORACIC_RESP'])
         plt.show()
         # вычисляем разности между соседними значениями x и y
@@ -343,15 +361,23 @@ if __name__ == "__main__":
     # plt2 = plt.plot(win['time'], win['EDA'])
     # val = metrics_EDA(win)
 
+    poly_data_dict = common_poly_frames(meta_information, subjects[1])
     # метрика для кгр
-    norm_EDA = normalize_poly_df(common_poly_frames(meta_information, subjects[1])['EDA'])
+    norm_EDA = normalize_poly_df(poly_data_dict['EDA'])
     val_EDA = metrics_EDA(norm_EDA)
     print(val_EDA)
 
     # метрика для дыхания
-    norm_RESP = normalize_poly_df(common_poly_frames(meta_information, subjects[1])['THORACIC_RESP'])
+    norm_RESP = normalize_poly_df(poly_data_dict['THORACIC_RESP'])
     val_resp = metrics_resp(norm_RESP)
     print(val_resp)
+
+    # метрика для давления
+    norm_VOL = normalize_poly_df(poly_data_dict['BLOOD_VOLUME'])
+
+    # метрика для фпг
+    norm_PLE = normalize_poly_df(poly_data_dict['PLE'])
+
     # для нескольких объектов по их индексам
     # for i in 0, 1, 2:
     #     norm_EDA = normalize_poly_df(common_poly_frames(meta_information, subjects[i])['EDA'])
