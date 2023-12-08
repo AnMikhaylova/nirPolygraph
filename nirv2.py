@@ -3,6 +3,7 @@
 
 import pandas as pd
 import numpy as np
+from scipy.signal import argrelextrema
 import datetime
 import argparse
 import re
@@ -347,9 +348,91 @@ def metrics_resp(dataframe):
     return result_df
 
 
+def metrics_vol(df):
+    groups = df.groupby(["trial", "stimul"])  # выделяем отдельные датафреймы по предъявлению и стимулу
+    result_df = pd.DataFrame(columns=['id', 'name', 'stimul', 'trial', 'BLOOD_VOLUME'])
+    result_df.drop(result_df.index, inplace=True)
+    id_num = df.iloc[0]['id']
+    name_subj = df.iloc[0]['name']
+    for name, group in groups:
+        win = window(BLOOD_VOL_WINDOW['start'], BLOOD_VOL_WINDOW['end'], group)
+        title = name_subj + " stimul:" + name[1] + " trial:" + str(name[0])
+        plt.title(title)
+        plt.xlabel("time, ms")
+        plt.ylabel("BLOOD_VOLUME")
+        # включаем основную сетку
+        plt.grid(which='major')
+        # включаем дополнительную сетку
+        plt.grid(which='minor', linestyle=':')
+        plt.tight_layout()
+        plt.plot(win['time'], win['BLOOD_VOLUME'])
+        plt.show()
+
+        new_row = {'id': id_num, 'name': name_subj, 'stimul': name[1], 'trial': name[0], 'BLOOD_VOLUME': 0}
+        result_df.loc[len(result_df.index)] = new_row
+    return result_df
+
+
+def metrics_ple(df):
+    groups = df.groupby(["trial", "stimul"])  # выделяем отдельные датафреймы по предъявлению и стимулу
+    result_df = pd.DataFrame(columns=['id', 'name', 'stimul', 'trial', 'PLE'])
+    result_df.drop(result_df.index, inplace=True)
+    id_num = df.iloc[0]['id']
+    name_subj = df.iloc[0]['name']
+    for name, group in groups:
+        win = window(PLE_WINDOW['start'], PLE_WINDOW['end'], group)
+        local_max = argrelextrema(win['PLE'].to_numpy(), np.greater)[0]  # индексы элементов с локальным максимумом
+        local_min = argrelextrema(win['PLE'].to_numpy(), np.less)[0]  # индексы элементов с локальным минимумом
+        threshold = 0.1  # порог для отброса слишком маленьких скачков
+        has_min = False
+        has_max = False
+        min_ind = 0
+        max_ind = 0
+        diff = []  # массив с величинами скачка между минимумами и максимумами
+        for i in range(0, win['PLE'].shape[0]):
+            if i in local_min:
+                min_ind = i
+                has_min = True
+            if (i in local_max) & has_min:
+                has_max = True
+                max_ind = i
+            if has_min & has_max:
+                d = win['PLE'].iloc[max_ind] - win['PLE'].iloc[min_ind]
+                diff.append(d)
+                has_min = False
+                has_max = False
+
+        has_threshold = any(diff[i] < threshold for i in range(len(diff) - 1))
+        save_diff = diff.copy()
+        while has_threshold:
+            diff.remove(min(diff))
+            has_threshold = any(diff[i] < threshold for i in range(len(diff) - 1))
+        value = min(diff)
+        title = name_subj + " stimul:" + name[1] + " trial:" + str(name[0])
+        plt.title(title)
+        plt.xlabel("time, ms")
+        plt.ylabel("PLE")
+        # включаем основную сетку
+        plt.grid(which='major')
+        # включаем дополнительную сетку
+        plt.grid(which='minor', linestyle=':')
+        plt.tight_layout()
+        plt.plot(win['time'], win['PLE'])
+        for i in local_max:
+            plt.plot(win['time'].iloc[i], win['PLE'].iloc[i], "x")
+        for i in local_min:
+            plt.plot(win['time'].iloc[i], win['PLE'].iloc[i], "x")
+        plt.show()
+
+        new_row = {'id': id_num, 'name': name_subj, 'stimul': name[1], 'trial': name[0], 'PLE': value}
+        result_df.loc[len(result_df.index)] = new_row
+    return result_df
+
+
 if __name__ == "__main__":
     meta_information = arg_parser()
     subjects = meta_information.get('subjects')
+
     # для конкретного объекта по его индексу
 
     # frame2 = finalDataFrame(meta_information, subjects[2])
@@ -363,20 +446,26 @@ if __name__ == "__main__":
 
     poly_data_dict = common_poly_frames(meta_information, subjects[1])
     # метрика для кгр
-    norm_EDA = normalize_poly_df(poly_data_dict['EDA'])
-    val_EDA = metrics_EDA(norm_EDA)
-    print(val_EDA)
+    # norm_EDA = normalize_poly_df(poly_data_dict['EDA'])
+    # val_EDA = metrics_EDA(norm_EDA)
+    # print(val_EDA)
 
     # метрика для дыхания
-    norm_RESP = normalize_poly_df(poly_data_dict['THORACIC_RESP'])
-    val_resp = metrics_resp(norm_RESP)
-    print(val_resp)
+    # norm_RESP = normalize_poly_df(poly_data_dict['THORACIC_RESP'])
+    # val_RESP = metrics_resp(norm_RESP)
+    # print(val_RESP)
 
     # метрика для давления
-    norm_VOL = normalize_poly_df(poly_data_dict['BLOOD_VOLUME'])
+    # norm_VOL = normalize_poly_df(poly_data_dict['BLOOD_VOLUME'])
+    # plt.plot(norm_VOL['time'], norm_VOL['BLOOD_VOLUME'])
+    # plt.show()
+    # val_VOL = metrics_vol(norm_VOL)
 
     # метрика для фпг
     norm_PLE = normalize_poly_df(poly_data_dict['PLE'])
+    # plt.plot(norm_PLE['time'], norm_PLE['PLE'])
+    # plt.show()
+    val_PLE = metrics_ple(norm_PLE)
 
     # для нескольких объектов по их индексам
     # for i in 0, 1, 2:
