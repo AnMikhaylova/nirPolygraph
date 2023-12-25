@@ -15,8 +15,8 @@ import matplotlib.pyplot as plt
 # Окна начала реакции
 EDA_WINDOW = {'start': 1200, 'end': 8000}  # КГР
 PLE_WINDOW = {'start': 2000, 'end': 9000}  # ФПГ
-BREATHE_WINDOW = {'start': 1000, 'end': 90000}  # Дыхание
-BLOOD_VOL_WINDOW = {'start': 0, 'end': 10000}  # Давление
+BREATHE_WINDOW = {'start': 0, 'end': 10000}  # Дыхание
+BLOOD_VOL_WINDOW = {'start': 1000, 'end': 9000}  # Давление
 
 
 # для изменения каналов полиграфа надо изменить значение списка polyChannels
@@ -446,26 +446,28 @@ if __name__ == "__main__":
 
     poly_data_dict = common_poly_frames(meta_information, subjects[1])
     # метрика для кгр
-    # norm_EDA = normalize_poly_df(poly_data_dict['EDA'])
-    # val_EDA = metrics_EDA(norm_EDA)
-    # print(val_EDA)
+    norm_EDA = normalize_poly_df(poly_data_dict['EDA'])
+    val_EDA = metrics_EDA(norm_EDA)
+    print(val_EDA)
 
     # метрика для дыхания
-    # norm_RESP = normalize_poly_df(poly_data_dict['THORACIC_RESP'])
-    # val_RESP = metrics_resp(norm_RESP)
-    # print(val_RESP)
+    norm_RESP = normalize_poly_df(poly_data_dict['THORACIC_RESP'])
+    val_RESP = metrics_resp(norm_RESP)
+    print(val_RESP)
 
     # метрика для давления
-    # norm_VOL = normalize_poly_df(poly_data_dict['BLOOD_VOLUME'])
+    norm_VOL = normalize_poly_df(poly_data_dict['BLOOD_VOLUME'])
     # plt.plot(norm_VOL['time'], norm_VOL['BLOOD_VOLUME'])
     # plt.show()
-    # val_VOL = metrics_vol(norm_VOL)
+    val_VOL = metrics_vol(norm_VOL)
+    print(val_VOL)
 
     # метрика для фпг
     norm_PLE = normalize_poly_df(poly_data_dict['PLE'])
     # plt.plot(norm_PLE['time'], norm_PLE['PLE'])
     # plt.show()
     val_PLE = metrics_ple(norm_PLE)
+    print(val_PLE)
 
     # для нескольких объектов по их индексам
     # for i in 0, 1, 2:
